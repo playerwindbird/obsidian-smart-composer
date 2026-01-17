@@ -363,3 +363,86 @@ function MentionableContentPreview({
 ChatUserInput.displayName = 'ChatUserInput'
 
 export default ChatUserInput
+
+
+// --- GEMINI FIX START: 移动端键盘高度自适应增强版 ---
+    useEffect(() => {
+      // 1. 仅在移动端生效
+      const isMobile = document.body.classList.contains('is-mobile')
+      if (!isMobile) return
+
+      const handleVisualResize = () => {
+        // 确保 API 可用
+        if (!window.visualViewport || !containerRef.current) return
+
+        // 尝试找到最外层的聊天容器 (对应 styles.css 中的 .smtcmp-chat-container)
+        // 使用 closest 比 parentElement 更稳健
+        const chatContainer = containerRef.current.closest('.smtcmp-chat-container') as HTMLElement | null
+        
+        if (chatContainer) {
+          const viewportHeight = window.visualViewport.height
+          const viewportOffsetTop = window.visualViewport.offsetTop // 视口距离页面顶部的距离
+          const elementTop = chatContainer.getBoundingClientRect().top // 元素距离视口顶部的距离
+          
+          // 计算绝对偏移量：元素距离页面顶部的实际距离
+          // 注意：getBoundingClientRect().top 会随着页面滚动而变化，但在 Obsidian 移动端 App 内部通常是相对稳定的
+          // 这里的核心逻辑是：可视高度 - 容器距离顶部的距离 = 容器应有的高度
+          
+          // 获取当前窗口的完整高度作为参考
+          const windowHeight = window.innerHeight;
+          
+          // 判断键盘是否可能已关闭 (可视高度接近窗口高度)
+          // 阈值设为 100px 以兼容底部导航栏等差异
+          const isKeyboardClosed = Math.abs(viewportHeight - windowHeight) < 100;
+
+          if (isKeyboardClosed) {
+            // [关键改进] 键盘关闭时，清除内联高度，回归 CSS 的 height: 100% 自适应
+            // 这样可以修复旋转屏幕或分屏后高度卡死的问题
+            chatContainer.style.height = '';
+            chatContainer.style.minHeight = ''; 
+          } else {
+             // 键盘开启时，强制计算像素高度
+            // 修正计算：有时候 topOffset 可能会因为 safe-area 变得不准，
+            // 简单的做法是：可视高度 - 容器顶部距离
+            const newHeight = viewportHeight - elementTop;
+            
+            // 只有高度确实有明显变化时才应用，避免抖动
+            if (newHeight > 0 && Math.abs(chatContainer.clientHeight - newHeight) > 5) {
+               chatContainer.style.height = `${newHeight}px`;
+               // 防止 flex 子元素压缩过度
+               chatContainer.style.minHeight = `${newHeight}px`;
+            }
+            
+            // 确保输入框在可视范围内
+            setTimeout(() => {
+                 if (document.activeElement === contentEditableRef.current) {
+                    contentEditableRef.current?.scrollIntoView({
+                        behavior: 'auto', // 移动端瞬间跳转比 smooth 更少出 bug
+                        block: 'nearest' 
+                    });
+                 }
+            }, 100);
+          }
+        }
+      }
+
+      // 监听视口变化（键盘弹出/收起、旋转）
+      window.visualViewport.addEventListener('resize', handleVisualResize)
+      window.visualViewport.addEventListener('scroll', handleVisualResize)
+
+      // 初始化执行一次
+      handleVisualResize()
+
+      return () => {
+        window.visualViewport?.removeEventListener('resize', handleVisualResize)
+        window.visualViewport?.removeEventListener('scroll', handleVisualResize)
+        
+        // 组件卸载时清理样式
+        const chatContainer = containerRef.current?.closest('.smtcmp-chat-container') as HTMLElement | null
+        if (chatContainer) {
+          chatContainer.style.height = ''
+          chatContainer.style.minHeight = ''
+        }
+      }
+    }, [])
+    // --- GEMINI FIX END ---
